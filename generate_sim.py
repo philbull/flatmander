@@ -12,8 +12,10 @@ p = experiment.p
 cosmo = experiment.cosmo
 
 # (For testing)
-RESCALE_CLUSTER_SIZE = 1. # Enlarge cluster angular size by this factor
-RESCALE_TSZ_AMP = 10. # Scale cluster TSZ signal amplitude by this factor
+RESCALE_CLUSTER_SIZE = 1 # Enlarge cluster angular size by this factor
+RESCALE_TSZ_AMP = 1 # Scale cluster tSZ signal amplitude by this factor
+RESCALE_KSZ_AMP = 1 # Scale cluster kSZ signal amplitude by this factor
+
 nsims = p['nsims'] # number of CMB simulations
 
 # Make directories for maps, results etc.
@@ -38,7 +40,6 @@ for k in freqs:
         _mask=template.copy()
         _mask.data[:]=1
     _mask.writeFits(mapDir+'/mask_%d.fits'%(k), overWrite=True)
-    _mask.plot()
     masks.append(_mask)
 
 
@@ -61,9 +62,13 @@ for n in range(nsims):
     cluster_set = fist.ClusterSet(catalogue=p['cluster_cat'], map_template=template)
     g_nu = [cluster_set.tsz_spectrum(nu=f) for f in freqs]
 
-    clumap = np.zeros(template.data.shape)
+    clumap_tsz = np.zeros(template.data.shape)
+    clumap_ksz = np.zeros(template.data.shape)
+    
     for i in range(cluster_set.Ncl):
-        clumap += cluster_set.get_cluster_map(i, rescale=RESCALE_CLUSTER_SIZE, maptype='tsz')[0]
+        clumap_tsz += cluster_set.get_cluster_map(i, rescale=RESCALE_CLUSTER_SIZE, maptype='tsz')[0]
+        clumap_ksz += cluster_set.get_cluster_map(i, rescale=RESCALE_CLUSTER_SIZE, maptype='ksz')[0]
+
 
     # Create skymap per band
     datamaps = []
@@ -73,29 +78,39 @@ for n in range(nsims):
     
         # Add amplitude-scaled cluster to map (and then plot)
         m = template.copy()
-        m.data += g_nu[count] * RESCALE_TSZ_AMP * clumap
+        m_cmb = template.copy()
+        
+        m.data += g_nu[count] * RESCALE_TSZ_AMP * clumap_tsz
+        m.data += RESCALE_KSZ_AMP * clumap_ksz
+        
+        fist.plot(g_nu[count] * RESCALE_TSZ_AMP * clumap_tsz, mapDir+'/tSZ_%03d_%d'%(n,k)+".png",'tSZ %d GHz'%k, range=(-250, 250))
+        fist.plot( RESCALE_KSZ_AMP * clumap_ksz, mapDir+'/kSZ_%03d_%d'%(n,k)+".png",'kSZ %d GHz'%k, range=(-250, 250))
+
         if count == 0 and n==0:
-            fist.plot(RESCALE_TSZ_AMP * clumap,'clusters map', mapDir+'/clumap.png')
+            fist.plot(RESCALE_TSZ_AMP * clumap_tsz,'clusters map tSZ', mapDir+'/clumap_tSZ.png')
+            fist.plot(RESCALE_KSZ_AMP * clumap_ksz,'clusters map kSZ', mapDir+'/clumap_kSZ.png')
 
         # Convolve sky map with the beam
         m = fist.applyBeam(m, beams[count])
-
+        m_cmb= fist.applyBeam(m_cmb, beams[count])
         # Add noise to map, and multiply by mask
         
         noise=np.random.randn(m.Ny,m.Nx)*ninvs[count]**(-0.5)
-        pylab.matshow(noise)
-        pylab.show()
         
         m.data += noise
-
+        m_cmb.data += noise
  
 
         m.data[:] *= masks[count].data[:]
-    
+        m_cmb.data[:] *= masks[count].data[:]
         # Save datamap to FITS file, and make plots
+        
         m.writeFits(mapDir+'/data_%03d_%d.fits'%(n,k), overWrite=True)
         T_plot = m.data[:] * (1 + np.log(masks[count].data[:])) # Useful for seeing masked regions
+        T_cmb_plot= m_cmb.data[:] * (1 + np.log(masks[count].data[:])) # Useful for seeing masked regions
         fist.plot(T_plot, mapDir+'/data_%03d_%d'%(n,k)+".png",'data %d GHz'%k, range=(-250, 250))
+        fist.plot(T_cmb_plot, mapDir+'/data_cmb_%03d_%d'%(n,k)+".png",'data cmb %d GHz'%k, range=(-250, 250))
+
         count+=1
 
 print "Finished."

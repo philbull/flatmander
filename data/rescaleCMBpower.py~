@@ -1,0 +1,11 @@
+from flipper import *
+
+
+lth,clth_TT,clth_EE,clth_BB,clth_TE=numpy.loadtxt('bode_almost_wmap5_lmax_1e4_lensedCls.dat',unpack=True)
+clth_TT,clth_EE,clth_BB,clth_TE=clth_TT*10**-9,clth_EE*10**-9,clth_BB*10**-9,clth_TE*10**-9
+
+    
+g = open('rescaletheory.dat',mode="w")
+for k in xrange(len(lth)):
+    g.write("%f %e %e %e %e %e\n"%(lth[k],clth_TT[k],clth_EE[k],clth_BB[k],clth_TE[k]))
+g.close()

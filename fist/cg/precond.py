@@ -3,7 +3,7 @@ from flipper import *
 from ..gibbs_tools import *
 import fft
 
-def prep_system( expt_setup, power_2d, cluster_set, precond_rms, vcov=None ):
+def prep_system( expt_setup, power_2d, cluster_set, precond_rms, use_ksz=None):
     """
     Precomputes all of the quantities needed to solve the linear system, 
     including a preconditioner and the cluster spatial templates.
@@ -51,18 +51,15 @@ def prep_system( expt_setup, power_2d, cluster_set, precond_rms, vcov=None ):
     # TODO: Parallelise get_cluster_map()
     g_nu = [cluster_set.tsz_spectrum(f) for f in freqs]
 
-    # Build KSZ cluster maps and invert vel. covariance matrix (if KSZ is enabled)
-    use_ksz = False; ivcov = None
-    if vcov is not None:
-        use_ksz = True
-        ivcov = build_vcov_inverse(vcov)
-    
+
     # Build (freq.-dep.) beam-convolved maps of TSZ/KSZ effect for each cluster
     maps = build_cluster_maps(cluster_set, beams, use_ksz=use_ksz)
+    print 'also fit for a kSZ amplitude'
     
     # Construct tuple containing all useful settings/quantities
     linsys_setup = ( datamaps, ninvs, beams, freqs, power_2d, precond_2d, 
-                     maps, g_nu, map_prop, vcov, ivcov )
+                     maps, g_nu, map_prop
+                    )
     return linsys_setup
 
 def update_system_setup(linsys_setup, vcov=None, ivcov=None, maps=None):
@@ -121,7 +118,7 @@ def computeX0(linsys_setup):
     Compute initial guess for solution (CMB = 0 and cluster amp. = 1).
     """
     datamaps, ninvs, beams, freqs, power_2d, precond_2d, clumaps, g_nu, \
-                                           map_prop, vcov, ivcov = linsys_setup
+                                           map_prop = linsys_setup
     x = 0*datamaps[0].data
     
     # Monopole amplitude
@@ -129,7 +126,7 @@ def computeX0(linsys_setup):
     
     # TSZ amplitudes
     for ic in range(len(clumaps[0])):
-      x = numpy.append(x, 1.)
+      x = numpy.append(x, 0.)
     
     # KSZ amplitudes
     if len(clumaps) == 2:
@@ -144,7 +141,7 @@ def computeB(linsys_setup):
     This includes projected data, white noise realisation, etc.
     """
     datamaps, ninvs, beams, freqs, power_2d, precond_2d, clumaps, g_nu, \
-                                           map_prop, vcov, ivcov = linsys_setup
+                                           map_prop = linsys_setup
     nx, ny, pixScaleX, pixScaleY = map_prop
     nFreq = len(g_nu); nCluster = len(clumaps[0])
     ksz = False
@@ -226,12 +223,7 @@ def computeB(linsys_setup):
     b0 = numpy.reshape(b0,(nx*ny))
     b1 = numpy.reshape(b1,(nx*ny))
     
-    # Add prior term for KSZ
-    if ksz:
-        sqrt_ivcov = numpy.linalg.cholesky(ivcov)
-        omega_1 = numpy.random.normal(size=nCluster)
-        b3 += numpy.dot(sqrt_ivcov, omega_1)
-    
+
     # Compute CMB and cluster data parts of b
     b_CMB = computeCMBY(datamaps) + b0 + b1
     b_mono = computeMonopoleY(datamaps) + b4
@@ -250,7 +242,7 @@ def preCondConjugateGradientSolver(b, x, linsys_setup, eps, i_max, plotInterval,
     Solve linear system of equations with preconditioned CG solver.
     """
     datamaps, ninvs, beams, freqs, power_2d, precond_2d, clumaps, g_nu, \
-                                           map_prop, vcov, ivcov = linsys_setup
+                                           map_prop = linsys_setup
     nx, ny, pixScaleX, pixScaleY = map_prop
     nCluster = len(clumaps[0])
     ksz = False
@@ -320,6 +312,7 @@ def preCondConjugateGradientSolver(b, x, linsys_setup, eps, i_max, plotInterval,
     
     a_l = numpy.fft.fft2(x0) * precond_2d
     x0 = numpy.real(numpy.fft.ifft2(a_l))
+
     
     # CMB, monopole, TSZ, KSZ
     return x0, x1, x2, x3
@@ -332,7 +325,7 @@ def applyMat(my_map, linsys_setup):
     """
     
     datamaps, ninvs, beams, freqs, power_2d, precond_2d, clumaps, g_nu, \
-                                           map_prop, vcov, ivcov = linsys_setup
+                                           map_prop = linsys_setup
     
    
 
@@ -434,11 +427,12 @@ def applyMat(my_map, linsys_setup):
             mct += dt[ic] * ninvs[f] * clumaps[0][ic][f] * g_nu[f]
             if ksz: mck += dk[ic] * ninvs[f] * clumaps[1][ic][f]
         
-          b_lt += fft.rfft(mct,axes=[-2,-1]) * beam_prec[f]
           b_lm += fft.rfft(dm * ninvs[f],axes=[-2,-1])  * beam_prec[f]
+          b_lt += fft.rfft(mct,axes=[-2,-1]) * beam_prec[f]
           if ksz: b_lk += fft.rfft(mck,axes=[-2,-1]) * beam_prec[f]
-        mct = fft.irfft(b_lt,axes=[-2,-1],normalize=True).reshape((nx*ny,))
+
         mcm = fft.irfft(b_lm,axes=[-2,-1],normalize=True).reshape((nx*ny,))
+        mct = fft.irfft(b_lt,axes=[-2,-1],normalize=True).reshape((nx*ny,))
         if ksz: mck = fft.irfft(b_lk,axes=[-2,-1],normalize=True).reshape((nx*ny,))
         
         # (T^T A^T N^-1 A) x_cmb; (F^T A^T N^-1 A) x_cmb; (K^T A^T N^-1 A) x_cmb
@@ -482,8 +476,8 @@ def applyMat(my_map, linsys_setup):
             dmt += numpy.sum( ninvs[f] * g_nu[f] * clumaps[0][ic][f] * t0[ic] )
             dtm[ic] += numpy.sum( ninvs[f] * g_nu[f] * clumaps[0][ic][f] * m0 )
             if ksz:
-              dmk += numpy.sum( ninvs[f] * g_nu[f] * clumaps[1][ic][f] * k0[ic] )
-              dkm[ic] += numpy.sum( ninvs[f] * g_nu[f] * clumaps[1][ic][f] * m0 )
+              dmk += numpy.sum( ninvs[f]  * clumaps[1][ic][f] * k0[ic] )
+              dkm[ic] += numpy.sum( ninvs[f]  * clumaps[1][ic][f] * m0 )
             
             for jc in range(0, ic+1):
               mtt[ic,jc] = numpy.sum(  ninvs[f] * g_nu[f]**2. \
@@ -508,9 +502,6 @@ def applyMat(my_map, linsys_setup):
             dkk += numpy.dot(mkk, k0)
             dtk += numpy.dot(mtk, k0)
             dkt += numpy.dot(mkt, t0)
-            
-            # Add prior term to KSZ-KSZ part
-            dkk += numpy.dot(ivcov, k0)
             
         if ksz: return dtt, dkk, dmm, dtk, dkt, dmk, dkm, dtm, dmt
         return dtt, dmm, dtm, dmt

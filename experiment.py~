@@ -2,7 +2,7 @@
 mapDir = "sims/map"
 
 p = {
-    'makeTemp':{'apply': True,'raSizeDeg': 4, 'decSizeDeg': 4, 'pixScaleXarcmin':  0.5,'pixScaleYarcmin':  0.5},
+    'makeTemp':{'apply': True,'raSizeDeg': 5, 'decSizeDeg': 5, 'pixScaleXarcmin':  0.5,'pixScaleYarcmin':  0.5},
     'rmsArcmin':        [8.,7.,25.],
     'beamSizeArcmin':   [2.2,1.4,0.9],
     'freq':             [90,150,230],

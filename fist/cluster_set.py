@@ -82,7 +82,7 @@ class ClusterSet(object):
         m1 = self.clusters[icl].tsz_profile()(_r) * 1e6 # in microK
         maps.append( m1.reshape(shp) )
     if maptype == 'ksz' or maptype == 'both':
-        m2 = self.clusters[icl].ksz_profile()(_r) * 1e6 # in microK
+        m2 = self.clusters[icl].ksz_profile()(_r) * 1e6 * 300 # in microK (we multiply by 300 km/s for a typical cluster velocity)
         maps.append( m2.reshape(shp) )
     return maps
   

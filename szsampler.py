@@ -11,7 +11,6 @@ import fft
 
 
 # Sampling settings
-Nsamp = 1
 SAMPLE_AMPS = True
 SAMPLE_SHAPES = False
 SAMPLE_POSITIONS = False
@@ -27,6 +26,9 @@ p = experiment.p
 cosmo = experiment.cosmo
 mapDir = experiment.mapDir
 nsims = p['nsims']
+nsamp = p['nsamp']
+
+
 
 
 # Load data and instrumental specifications
@@ -37,6 +39,11 @@ template, power_2d, beams, ninvs, freqs = fist.experiment_settings(p)
 fft.rfft(ninvs[0].copy(),axes=[-2,-1],flags=['FFTW_MEASURE'])
 template_l = fft.fft(ninvs[0],axes=[-2,-1])
 fft.irfft(template_l,axes=[-2,-1],flags=['FFTW_MEASURE'])
+
+
+#Create a directory for the results of the chain
+resultDir = fist.check_dir_exists('results')
+
 
 
 for n in range(nsims):
@@ -68,14 +75,11 @@ for n in range(nsims):
     pos_cov = np.zeros((2,2))
     pos_cov[0,0] = pos_cov[1,1] = (0.0002)**2.
 
-    # KSZ velocity covariance matrix
-    vcov = (300.**2.) * np.eye(cluster_set.Ncl) # FIXME: Just made this up
-    vcov = None # To disable KSZ sampling
 
     # Prepare linear system for amplitude sampler
     if SAMPLE_AMPS:
         linsys_setup = fist.cg.prep_system(expt_setup, power_2d, cluster_set,
-                                       p['rmsArcmin'][0], vcov=vcov)
+                                       p['rmsArcmin'][0] ,use_ksz=True)
 
     # Keep track of parameters as MCMC progresses
     chain_tszamp = []
@@ -85,9 +89,9 @@ for n in range(nsims):
 
 
     print 'realization %d'%n
-    for i in range(Nsamp):
+    for i in range(nsamp):
         if rank == 0:
-            print "\n * Gibbs step", i+1, "/", Nsamp
+            print "\n * Gibbs step", i+1, "/", nsamp
             t0 = time.time()
 
         # ==========================================================================
@@ -108,12 +112,15 @@ for n in range(nsims):
                 cmb_amp, mono_amp, tsz_amp, ksz_amp = \
                     fist.cg.preCondConjugateGradientSolver(b, x, linsys_setup, eps=p['epsilon'], i_max=p['imax'],plotInterval=p['plotInterval'], mapDir=mapDir )
                 
-                if vcov is not None:
-                    print "\tMonopole:", mono_amp
-                    print "\tTSZ/KSZ amp.", tsz_amp, ksz_amp
-                else:
-                    print "\tMonopole:", mono_amp
-                    print "\tTSZ amp.", tsz_amp
+                
+                np.save('%s/cmb_amp_%03d_%03d.npy'%(resultDir,i,n),cmb_amp)
+                np.savetxt('%s/mono_amp_%03d_%03d.dat'%(resultDir,i,n),mono_amp)
+                np.savetxt('%s/tsz_amp_%03d_%03d.dat'%(resultDir,i,n),tsz_amp)
+                np.savetxt('%s/ksz_amp_%03d_%03d.dat'%(resultDir,i,n),ksz_amp)
+
+
+                print "\tMonopole:", mono_amp
+                print "\tTSZ/KSZ amp.", tsz_amp, ksz_amp
                 print "\tSampler took", round(time.time()-t, 3), "sec."
                 
                 cmb_amp = cmb_amp.flatten() # Prepare to send via MPI
@@ -127,13 +134,12 @@ for n in range(nsims):
             comm.Bcast(mono_amp, root=0)
             comm.Bcast(cmb_amp, root=0)
             comm.Bcast(tsz_amp, root=0)
-            if vcov is not None:
-                comm.Bcast(ksz_amp, root=0)
+            comm.Bcast(ksz_amp, root=0)
             cmb_amp = np.reshape(cmb_amp, template.data.shape)
             
             # Append results to file
             chain_tszamp.append(tsz_amp)
-            if vcov is not None: chain_kszamp.append(ksz_amp)
+            chain_kszamp.append(ksz_amp)
             if rank == 0:
                 # Monopole
                 f = open("chain_monopole.dat", 'a')
@@ -142,10 +148,9 @@ for n in range(nsims):
           
             # TSZ/KSZ amps.
             for k in range(cluster_set.Ncl):
-                if vcov is not None:
-                    f = open("chain_ksz_%03d.dat"%k, 'a')
-                    f.write(str(tsz_amp[k]) + "\n")
-                    f.close()
+                f = open("chain_ksz_%03d.dat"%k, 'a')
+                f.write(str(tsz_amp[k]) + "\n")
+                f.close()
                 f = open("chain_tsz_%03d.dat"%k, 'a')
                 f.write(str(tsz_amp[k]) + "\n")
                 f.close()

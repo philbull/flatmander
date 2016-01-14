@@ -2,6 +2,7 @@
 """Arnaud et al. cluster pressure profile (arXiv:0910.1234)."""
 
 import numpy as np
+import pylab as P
 import scipy.integrate
 import scipy.interpolate
 import astLib.astCoords
@@ -267,6 +268,7 @@ class ArnaudProfile(object):
         _P = self.P(_r)
         Pinterp = scipy.interpolate.interp1d(_r, _P, kind='linear', 
                                              bounds_error=False, fill_value=0.)
+                                             
         
         # Sample the integrand and do Simpson-rule integration over samples
         ig_tsz = lambda x, b: Pinterp(x*self.r500) * (x / np.sqrt(x**2. - b**2.))

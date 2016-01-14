@@ -236,11 +236,11 @@ def makeMask(liteMap, nHoles, holeSize, lenApodMask,out_pix):
     
     Nx=mask.Nx
     Ny=mask.Ny
-#    xList=numpy.random.rand(nHoles)*Nx
-#    yList=numpy.random.rand(nHoles)*Ny
+    xList=numpy.random.rand(nHoles)*Nx
+    yList=numpy.random.rand(nHoles)*Ny
     
-    xList=[Nx/2.+20]
-    yList=[Ny/2.+20]
+    #xList=[Nx/2.]
+    #yList=[Ny/2.]
     
     for k in range(nHoles):
         holeMask.data[:]=1
