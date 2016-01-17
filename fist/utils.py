@@ -1,8 +1,27 @@
 
 import numpy as np
-from .gibbs_tools import *
+import astLib.astCoords
+from .map_tools import *
 from .units import *
 import os
+
+def galactic_to_ra_dec(self, l, b):
+    """
+    Return (RA, Dec) coords for given galactic coordinates (l, b).
+    """
+    ra, dec = astLib.astCoords.convertCoords("GALACTIC", "J2000", l, b, epoch=2000.)
+    return ra, dec
+
+def radec_pixel_grid(template):
+    """
+    Get coordinates of all pixels in a template map, in ra and dec, using 
+    proper coordinate-handling library (slow).
+    """
+    Nx, Ny = template.data.shape
+    idxs = np.indices((Nx, Ny))
+    ra, dec = np.array( self.map_template.pixToSky( 
+                          idxs[0].flatten(), idxs[1].flatten() )).T
+    return ra, dec
 
 def check_dir_exists(dirname):
     """
