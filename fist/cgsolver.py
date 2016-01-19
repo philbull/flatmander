@@ -1,6 +1,6 @@
 
 from flipper import *
-from ..gibbs_tools import *
+from .map_tools import *
 import fft
 
 def prep_system( expt_setup, power_2d, cluster_set, precond_rms, use_ksz=None):
