@@ -11,13 +11,16 @@ from utils import radec_pixel_grid
 
 class Source(object):
     
-  def __init__(self, params, template_info, paramnames=None, cosmo=None):
+  def __init__(self, pos, params, template_info, paramnames=None, cosmo=None):
     """
     Class to implement a source that can be added to sky maps and have its 
     amplitude/parameters sampled.
     
     Parameters
     ----------
+    pos : tuple(2) of float
+        Position of source center, (RA, Dec).
+        
     params : array_like
         Array of parameters of the source spatial/frequency profile.
     
@@ -44,15 +47,29 @@ class Source(object):
     self._profile = None
     self._dtheta = None
     
+    # Set position
+    self.update_position(pos)
+    
     # Load parameters and parameter names
-    self.load_params(params, paramnames)
+    self.update_params(params, paramnames)
     
     # Get information about the map coordinates and pixel RA/Dec coords
     self.template, self.px_ra, self.px_dec = template_info
     if self.px_ra is None or self.px_dec is None:
         self.px_ra, self.px_dec = radec_pixel_grid(self.template)
   
-  def load_params(self, params, paramnames):
+  def update_position(self, pos):
+    """
+    Update source position.
+    
+    Parameters
+    ----------
+    pos : tuple(2) of float
+        Position of source center, in (RA, Dec).
+    """
+    self.ra, self.dec = pos
+  
+  def update_params(self, params, paramnames=None):
     """
     Save parameter values and parameter names.
     """
@@ -60,17 +77,15 @@ class Source(object):
     
     # Define parameter names
     if paramnames is None:
-        self.paramnames = ['ra', 'dec', 'width', 'beta']
+        self.paramnames = ['width', 'beta']
     else:
         self.paramnames = paramnames
     
     # Save parameter values as class properties
-    self.ra = self.params[self.paramnames.index('ra')]
-    self.dec = self.params[self.paramnames.index('dec')]
     self.width = self.params[self.paramnames.index('width')]
     self.beta = self.params[self.paramnames.index('beta')]
   
-  def spectrum(self, nu):
+  def spectrum(self, nu, type=None):
     """
     Spectral scaling of the source, g(nu), at a given frequency.
     
@@ -86,22 +101,25 @@ class Source(object):
     """
     return (nu/140.)**self.beta
   
-  def profile(self, dtheta, type=None):
+  def profile(self, type=None):
     """
     Spatial profile as a fn. of distance from the center of the source.
     (Default: Gaussian with some width.)
     
     Parameters
     ----------
-    dtheta : array_like of float
-        Distance from center of source, dtheta, in degrees.
+    type : str, optional
+        Which type of spatial template to return, if the source has more than 
+        one type to choose from.
     
     Returns
     -------
-    profile : array_like of float
-        Spatial profile evaluated at a given dtheta.
+    profile : function()
+        Spatial profile function, with call signature profile(theta).
     """
-    return np.exp(-0.5 * (dtheta / self.width)**2.) / (2.*np.pi*self.width**2.)
+    prof = lambda th: np.exp(-0.5 * (th / self.width)**2.) \
+                        / (2.*np.pi*self.width**2.)
+    return prof
   
   
   def map(self, type=None):
@@ -175,12 +193,12 @@ class SourceList(object):
     # Initialise objects for each source
     self.sources = []
     for i in range(self.Nsrc):
-        src = SourceClass(params=self.catalog[i], template_info=self.template_info, 
-                          cosmo=cosmo)
+        src = SourceClass(pos=(self.ra[i], self.dec[i]), params=self.catalog[i], 
+                          template_info=self.template_info, cosmo=cosmo)
         self.sources.append(src)
   
   
-  def load_catalog(self, catalog, simple=False):
+  def load_catalog(self, catalog, posidx=None, simple=False):
     """
     Load parameters from catalogue. In the default mode, this reads the 
     parameter names from the header.
@@ -190,6 +208,11 @@ class SourceList(object):
     catalog : str or array_like
         Path to catalogue of sources (if string) or catalog of parameters (if 
         array_like).
+    
+    posidx : tuple(2) of int, optional
+        Which columns of the catalogue give the RA and Dec positions of the 
+        sources. By default, assumes columns (0, 1) are (RA, Dec) respectively 
+        if simple=True, else obtains from named columns.
     
     simple : bool, optional
         If False, this will attempt to load parameter names from the header of 
@@ -218,19 +241,32 @@ class SourceList(object):
         hdr = f.readline()
         f.close()
         self.paramnames = hdr[2:-1].split(' ')
-        print "\tSource catalogue params:", self.params
-        
+        print "\tSource catalogue params:", self.paramnames
+    
+    # Determine positions of objects
+    if simple and posidx is None:
+        self.ra = catalog[0]
+        self.dec = catalog[1]
+    elif simple and posidx is not None:
+        self.ra = catalog[posidx[0]]
+        self.dec = catalog[posidx[1]]
+    else:
+        pn = [_pn.lower() for _pn in self.paramnames] # normalise to lowercase
+        self.ra = catalog[ pn.index('ra') ]
+        self.dec = catalog[ pn.index('dec') ]
+    
     return self.catalog
   
   def params(self):
     """
-    Return a list of source parameters for all sources.
+    Return an array of source parameters for all sources.
     """
-    return [self.sources[i].params for i in range(self.Nsrc)]
+    return np.array([self.sources[i].params for i in range(self.Nsrc)])
   
   def positions(self):
     """
     Return a list of positions for all sources (RA, Dec).
     """
-    return [(self.sources[i].ra, self.sources[i].dec) for i in range(self.Nsrc)]
+    return np.array( [(self.sources[i].ra, self.sources[i].dec) 
+                      for i in range(self.Nsrc)] )
 
