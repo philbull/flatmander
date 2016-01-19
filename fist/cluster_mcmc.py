@@ -4,7 +4,7 @@ Cluster shape- and position-sampling MCMC.
 """
 
 import numpy as np
-from .gibbs_tools import *
+from .map_tools import *
 from .utils import *
 from mpi4py import MPI as mpi
 
