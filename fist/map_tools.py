@@ -1,5 +1,6 @@
 from flipper import *
 import pyfits
+import astLib.astCoords
 from scipy.interpolate import splrep, splev
 
 
@@ -181,6 +182,85 @@ def realize_gaussian_field(dmap, ell, Cell, bufferfactor=1):
     return dmap
 
 
+def coord_grid(template):
+    """
+    Get coordinates of all pixels in a template map, in ra and dec, using 
+    proper coordinate-handling library (slow).
+    
+    Parameters
+    ----------
+    template : Flipper LiteMap
+        Template map, used to define coordinate system and pixel grid.
+    
+    Returns
+    -------
+    ra, dec : array_like(2D)
+        Pixel grids (2D arrays) of the RA and Dec values for the pixels in the 
+        input template map.
+    """
+    Nx, Ny = template.data.shape
+    idxs = np.indices((Nx, Ny))
+    ra, dec = np.array( template.pixToSky( idxs[0].flatten(),
+                                           idxs[1].flatten() )).T
+    return ra.reshape(template.data.shape), dec.reshape(template.data.shape)
+
+
+def map_from_profile(template, profile, pos, px_coords=None):
+    """
+    Project an angular profile onto a pixel grid.
+    
+    Parameters
+    ----------
+    template : Flipper LiteMap
+        Template LiteMap, used to define coordinate system and pixel grid.
+    
+    profile : callable float / list of callable float
+        Callable angular profile, as a function of angle from the center of the 
+        profile in degrees. A list of profiles can be provided, all to be 
+        evaluated on the same pixel grid with the same center coordinates.
+    
+    pos : tuple(2) of float
+        Position of the centre of the profile in (RA, Dec).
+    
+    px_coords : tuple(2) of array_like, optional
+        Grids of coordinates (RA, Dec) of each pixel in the template map. Can 
+        be precomputed using the coord_grid() function. If None, the grids will 
+        be computed on the fly (slow).
+    
+    Returns
+    -------
+    map : Flipper LiteMap / list of LiteMap
+        Pixel grid with projected map of the specified profile. If a list of 
+        profiles was specified for 'profile', a corresponding list of output 
+        maps will be returned.
+    """
+    # Get position of profile centre
+    ra, dec = pos
+    
+    # Get coordinate grid for pixels
+    if px_coords is None:
+        px_ra, px_dec = coord_grid(template)
+    else:
+        px_ra, px_dec = px_coords
+    
+    # Compute grid of pixel distances from profile centre
+    # FIXME: Is there an approximate method that will do this faster?
+    dtheta = astLib.astCoords.calcAngSepDeg(ra, dec, px_ra, px_dec)
+    shp = template.data.shape # 2D map shape
+    
+    # Evaluate profile on this grid
+    if isinstance(profile, list):
+        dmap = []
+        for prof in profile:
+            _dmap = template.copy() # Initialise map
+            _dmap.data[:] = prof(dtheta.flatten()).reshape(shp)
+            dmap.append(_dmap)
+    else:
+        dmap = template.copy()
+        dmap.data[:] = profile(dtheta.flatten()).reshape(shp)
+    return dmap
+
+
 #def makeEmptyCEATemplate(raSizeDeg, decSizeDeg,meanRa = 180., meanDec = 0., pixScaleXarcmin = 0.5, pixScaleYarcmin=0.5):
 def empty_map(width, center=(180., 0.), pixscale=(0.5, 0.5)):
     """
@@ -206,8 +286,8 @@ def empty_map(width, center=(180., 0.), pixscale=(0.5, 0.5)):
     # Calculate grid properties
     cdelt1 = -pixscale[0]/60.
     cdelt2 = pixscale[1]/60.
-    naxis1 = numpy.int(width[0]/pixScaleXarcmin*60. + 0.5)
-    naxis2 = numpy.int(width[1]/pixScaleYarcmin*60. + 0.5)
+    naxis1 = numpy.int(width[0]/pixscale[0]*60. + 0.5)
+    naxis2 = numpy.int(width[1]/pixscale[1]*60. + 0.5)
     refPix1 = naxis1/2.
     refPix2 = naxis2/2.
     pv2_1 = 1.0
@@ -219,8 +299,8 @@ def empty_map(width, center=(180., 0.), pixscale=(0.5, 0.5)):
     cardList.append(pyfits.Card('NAXIS2', naxis2))
     cardList.append(pyfits.Card('CTYPE1', 'RA---CEA'))
     cardList.append(pyfits.Card('CTYPE2', 'DEC--CEA'))
-    cardList.append(pyfits.Card('CRVAL1', meanRa))
-    cardList.append(pyfits.Card('CRVAL2', meanDec))
+    cardList.append(pyfits.Card('CRVAL1', center[0]))
+    cardList.append(pyfits.Card('CRVAL2', center[1]))
     cardList.append(pyfits.Card('CRPIX1', refPix1+1))
     cardList.append(pyfits.Card('CRPIX2', refPix2+1))
     cardList.append(pyfits.Card('CDELT1', cdelt1))
@@ -353,7 +433,7 @@ def beam_template(template, ell, wl, lmax, outputfile=None, debug=False):
     beam.data = numpy.abs(fT.kMap)
     
     # Output beam template to file if requested
-    if outputFile is not None:
+    if outputfile is not None:
         beam.writeFits(outputfile, overWrite=True)
     return beam
 
@@ -507,7 +587,7 @@ def mask_disc(template, position, radius, apod_radius=0):
     return mask
 
 
-def makeMask(template, nHoles, holeSize, lenApodMask, out_pix)
+def makeMask(template, nHoles, holeSize, lenApodMask, out_pix):
     """
     Create a mask with nholes and edge mask. (OBSOLETE)
     """

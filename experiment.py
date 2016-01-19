@@ -33,6 +33,8 @@ cosmo = {
     'h':				0.7,
     'n':				0.96,
     'sigma_8':			0.8,
+    'w0':               -1.,
+    'wa':               0.,
     'baryonic_effects': True
 }
 

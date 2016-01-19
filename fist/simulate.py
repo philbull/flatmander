@@ -1,6 +1,6 @@
 
 from .utils import *
-from .gibbs_tools import *
+from .map_tools import *
 from .cluster_set import *
 
 def prep_multiple_realisations(p, rescale_cluster_size=1.):

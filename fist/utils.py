@@ -12,17 +12,6 @@ def galactic_to_ra_dec(self, l, b):
     ra, dec = astLib.astCoords.convertCoords("GALACTIC", "J2000", l, b, epoch=2000.)
     return ra, dec
 
-def radec_pixel_grid(template):
-    """
-    Get coordinates of all pixels in a template map, in ra and dec, using 
-    proper coordinate-handling library (slow).
-    """
-    Nx, Ny = template.data.shape
-    idxs = np.indices((Nx, Ny))
-    ra, dec = np.array( self.map_template.pixToSky( 
-                          idxs[0].flatten(), idxs[1].flatten() )).T
-    return ra, dec
-
 def check_dir_exists(dirname):
     """
     Ensure that a given directory exists, and return the name of the directory.
@@ -81,17 +70,23 @@ def experiment_settings(p):
     # Generate flat-sky template
     # FIXME: Coords are fixed for now
     if maketemp['apply']:
-        template = makeEmptyCEATemplate( maketemp['raSizeDeg'], maketemp['decSizeDeg'],
-                                        meanRa=180., meanDec=0.,
-                                        pixScaleXarcmin=maketemp['pixScaleXarcmin'],
-                                        pixScaleYarcmin=maketemp['pixScaleYarcmin'] )
+        #template = makeEmptyCEATemplate( maketemp['raSizeDeg'], maketemp['decSizeDeg'],
+        #                                meanRa=180., meanDec=0.,
+        #                                pixScaleXarcmin=maketemp['pixScaleXarcmin'],
+        #                                pixScaleYarcmin=maketemp['pixScaleYarcmin'] )
+        template = empty_map( width=(maketemp['raSizeDeg'], 
+                                     maketemp['decSizeDeg']), 
+                              center=(180., 0.), 
+                              pixscale=(maketemp['pixScaleXarcmin'], 
+                                        maketemp['pixScaleYarcmin']) )
+        
     print "="*50
     print "MAP PROPERTIES"
     template.info()
     print "="*50
     
     # Generate 2D power spectrum from Cl's (setting monopole to zero)
-    power_2d = make2dPowerSpectrum(template, l, cl_TT)
+    power_2d = power_spectrum_2d(template, l, cl_TT)
     power_2d[0,0] = 1e-10
     
     # Get (inv.) noise, beam, and mask per band
@@ -102,10 +97,10 @@ def experiment_settings(p):
         #ell, bl = np.loadtxt(p['beamFile']).T
         ell = np.arange(15000)
         bl = np.exp(-ell*(ell+1)*(p['beamSizeArcmin'][j]/RAD2MIN)**2 / 8*np.log(2) )
+        
         # Make 2D beam template
-        beamTemp = makeTemplate(template, bl, ell, np.max(l)-2, outputFile=None)
+        beamTemp = beam_template(template, ell, bl, np.max(l)-2, outputfile=None)
         beamTemp = beamTemp.data[:]
-
 
         # Build noise covmat
         pixArea = RAD_TO_MIN**2. * template.pixScaleX * template.pixScaleY
