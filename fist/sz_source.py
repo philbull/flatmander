@@ -5,7 +5,7 @@ import scipy.interpolate
 
 class SZCluster(Source):
 
-  def __init__(self, pos, params, template_info, paramnames=None, cosmo=None):
+  def __init__(self, pos, params, template, paramnames=None, cosmo=None):
     """
     Generic SZ cluster base class, with both TSZ and KSZ profiles.
     
@@ -16,7 +16,7 @@ class SZCluster(Source):
         self.ksz_amp
     """
     # Initialise parent class
-    super(SZCluster, self).__init__(pos, params, template_info, 
+    super(SZCluster, self).__init__(pos, params, template, 
                                     paramnames=paramnames, cosmo=cosmo)
     
     # Sanity checks to make sure SZ class can initialise properly
@@ -145,7 +145,7 @@ class SZCluster(Source):
 
 class GNFWCluster(SZCluster):
 
-  def __init__(self, pos, params, template_info, paramnames=None, cosmo=None):
+  def __init__(self, pos, params, template, paramnames=None, cosmo=None):
     """
     SZ cluster source, with TSZ and KSZ profiles based on a GNFW model.
     
@@ -160,9 +160,8 @@ class GNFWCluster(SZCluster):
         (Units: M500 ~ Msun)
         Specify 'paramnames' to use a different ordering of the array.
     
-    template_info : tuple(3)
-        Information needed to calculate maps on the correct coordinate system/
-        pixel grid. See documentation for base class, Source().
+    template : Flipper LiteMap
+        Template LiteMap used to define coordinate system and pixel grid.
     
     paramnames : list of str, optional
         Ordered list of parameter names for the array 'params'. If paramnames 
@@ -173,7 +172,7 @@ class GNFWCluster(SZCluster):
         Convenience class to calculate cosmological functions. Required.
     """
     # Initialise parent class
-    super(GNFWCluster, self).__init__(pos, params, template_info, 
+    super(GNFWCluster, self).__init__(pos, params, template, 
                                     paramnames=paramnames, cosmo=cosmo)
     
   def update_params(self, params, paramnames=None):

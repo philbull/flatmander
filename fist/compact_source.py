@@ -7,11 +7,10 @@ import scipy.interpolate
 import scipy.integrate
 import astLib.astCoords
 from units import *
-from utils import radec_pixel_grid
 
 class Source(object):
     
-  def __init__(self, pos, params, template_info, paramnames=None, cosmo=None):
+  def __init__(self, pos, params, template, paramnames=None, cosmo=None):
     """
     Class to implement a source that can be added to sky maps and have its 
     amplitude/parameters sampled.
@@ -24,16 +23,8 @@ class Source(object):
     params : array_like
         Array of parameters of the source spatial/frequency profile.
     
-    template_info : tuple(3)
-        Information needed to calculate maps on the correct coordinate/pixel 
-        grid. The tuple should contain:
-          - template(LiteMap): Template map that defines coords/pixel grid
-          - px_ra(array_like): Map of RA values for each pixel, can be None
-          - px_dec(arrayLike): Map of Dec values for each pixel, can be None
-        
-        If the px_ra, px_dec variables are 'None', they will be precalculated. 
-        This is relatively slow, so cached values of these variables should be 
-        used if possible.
+    template : Flipper LiteMap
+        Template map used to define coordinate system and pixel grid.
     
     paramnames : list_like of str, optional
         Ordered list with the names of the parameters. Can be None, in which 
@@ -54,9 +45,10 @@ class Source(object):
     self.update_params(params, paramnames)
     
     # Get information about the map coordinates and pixel RA/Dec coords
-    self.template, self.px_ra, self.px_dec = template_info
-    if self.px_ra is None or self.px_dec is None:
-        self.px_ra, self.px_dec = radec_pixel_grid(self.template)
+    self.template = template
+    #self.template, self.px_ra, self.px_dec = template_info
+    #if self.px_ra is None or self.px_dec is None:
+    #    self.px_ra, self.px_dec = radec_pixel_grid(self.template)
   
   def update_position(self, pos):
     """
@@ -122,10 +114,10 @@ class Source(object):
     return prof
   
   
-  def map(self, type=None):
+  def map(self, type=None, px_coords=None):
     """
-    Spatial template (map) of the source, in uK. The frequency-dependent 
-    factor is not included.
+    Spatial template (map) of the source. The frequency-dependent factor is not 
+    included. The map is obtained by a call to map_from_profile().
     
     Parameters
     ----------
@@ -135,13 +127,21 @@ class Source(object):
         physically-linked emission processes (e.g. TSZ and KSZ clusters), or 
         sources with unpolarised and polarised emission.
         Default: None (returns default map for the source).
+    
+    px_coords : tuple(2) of array_like, optional
+        Values of the (RA, Dec) coordinates of each pixel in the grid defined 
+        by self.template, passed to map_from_profile(). If None, the grids will 
+        be computed on the fly (slow).
+    
+    Returns
+    -------
+    map : Flipper LiteMap
+        LiteMap with the requested spatial profile projected onto the pixel 
+        grid.
     """
-    # Map of ang. distance of each pixel from centre of object
-    if self._dtheta is None:
-        self._dtheta = astLib.astCoords.calcAngSepDeg( self.ra, self.dec, 
-                                                       self.px_ra, self.px_dec )
-    dmap = self.profile(self._dtheta)
-    return dmap.reshape(self.template.data.shape)
+    return map_from_profile( self.template, self.profile(type=type), 
+                             pos=(self.ra, self.dec), px_coords=px_coords )
+    
   
   def visible(self):
     """
@@ -194,7 +194,7 @@ class SourceList(object):
     self.sources = []
     for i in range(self.Nsrc):
         src = SourceClass(pos=(self.ra[i], self.dec[i]), params=self.catalog[i], 
-                          template_info=self.template_info, cosmo=cosmo)
+                          template=self.template, cosmo=cosmo)
         self.sources.append(src)
   
   
