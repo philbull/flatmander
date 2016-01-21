@@ -209,7 +209,37 @@ class GNFWCluster(SZCluster):
     
     # Update derived parameters
     self.update_derived()
+  
+  
+  def update_parameter(self, paramname, value):
+    """
+    Update the value of a specific parameter.
+    """
+    pname = paramname.lower()
     
+    # Update the chosen parameter
+    if pname == 'z':
+        self.z = value
+    elif pname == 'm500':
+        self.M500 = value
+    elif pname == 'alpha':
+        self.alpha = value
+    elif pname == 'beta':
+        self.beta = value
+    elif pname == 'gamma':
+        self.gamma = value
+    elif pname == 'c500':
+        self.c500 = value
+    elif pname == 'p0':
+        self.P0 = value
+    else:
+        raise KeyError("Parameter '%s' is not recognised, or is not an input parameter." \
+                       % paramname)
+    
+    # Update derived parameters
+    self.update_derived()
+  
+  
   def update_derived(self):
     """
     Update derived parameters from current set of input parameters.
@@ -219,6 +249,10 @@ class GNFWCluster(SZCluster):
     
     # Derived using M_500 = 4pi/3 (r_500)^3 * 500 * rho_crit(z). Units: Mpc.
     self.r500 = ( (self.M500 / 5.81e10) / (self.cosmo.H(self.z))**2. )**(1./3.)
+    
+    # Derive in small-angle approximation, r_500 / D_A. Units: arcmin
+    self.th500 = self.r500 / (self.cosmo.r(self.z) / (1. + self.z)) \
+               * (180. * 60. / np.pi)
     
     # Derived using Eq. 2 of arXiv:astro-ph/0703661. Units: kg/m/s^2
     self.P500 = 1.45e-22 * (self.M500)**(2./3.) * hfac
