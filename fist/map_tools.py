@@ -1,3 +1,4 @@
+import numpy as np
 from flipper import *
 import pyfits
 import astLib.astCoords
@@ -327,6 +328,29 @@ def output_binned_spectrum(l, cl, filename):
     g.close()
 
 
+def ninv_gaussian(template, rms):
+    """
+    Return uncorrelated Gaussian inverse noise covariance matrix.
+    
+    Parameters
+    ----------
+    template : Flipper LiteMap
+        Template LiteMap used to set pixel grid.
+    
+    rms : float
+        Noise RMS in uK/arcmin^2.
+    
+    Returns
+    -------
+    Ninv : Flipper LiteMap
+        Inverse noise covariance matrix on pixel grid.
+    """
+    pix_area = RAD_TO_MIN**2. * template.pixScaleX * template.pixScaleY
+    Ninv = template.copy()
+    Ninv.data[:] = pixArea / rms**2. # Noise per px
+    return Ninv
+
+
 #def addWhiteNoise(map,rmsArcmin):
 def white_noise_map(template, rms, add=True):
     """
@@ -438,6 +462,27 @@ def beam_template(template, ell, wl, lmax, outputfile=None, debug=False):
     return beam
 
 
+def bl_gaussian(width, lmax=15000):
+    """
+    Generate a Gaussian beam template, b_l, as a function of ell.
+    
+    Parameters
+    ----------
+    width : float
+        The width of the beam, in arcmin.
+    
+    lmax : float, optional
+        The maximum ell mode to calculate the beam templae up to. 
+        Default: 15000.
+    
+    Returns
+    -------
+    b_l : array_like
+        Gaussian beam spherical harmonic template.
+    """
+    ell = np.arange(lmax)
+    return np.exp(-ell*(ell+1)*(width/RAD2MIN)**2 / 8*np.log(2) )
+
 #def applyBeam(map, beamTemp):
 def apply_beam(dmap, beam):
     """
@@ -445,39 +490,73 @@ def apply_beam(dmap, beam):
     
     Parameters
     ----------
-    dmap : Flipper LiteMap / ndarray
+    dmap : Flipper LiteMap / ndarray, or list of LiteMap
         Datamap to be convolved with beam template.
     
-    beam : Flipper LiteMap (FFT)
-        Fourier-space beam template, e.g. created by beam_template().
+    beam : Flipper LiteMap (FFT), or list of LiteMap
+        Fourier-space beam template, e.g. created by beam_template(). If a list, 
+        the datamap is convolved with each beam in the list, and a list of 
+        convolved maps is returned.
     
     Returns
     -------
     dmap : Flipper LiteMap / ndarray
         Input datamap convolved with beam.
     """
-    if isinstance(dmap, numpy.ndarray):
-        # Numpy array
-        f_T = beam * numpy.fft.fft2(dmap)
-        dmap = numpy.real(numpy.fft.ifft2(f_T))
-    else:
-        # LiteMap
-        f_T = beam * numpy.fft.fft2(dmap.data)
-        dmap.data[:]=numpy.real(numpy.fft.ifft2(f_T))
-    return dmap
+    # If only one beam provided, pack into list
+    single = False
+    if not isinstance(beam, list):
+        single = True
+        beam = [beam, ]
+    
+    # Take FFT of input data
+    Fdmap = np.fft.fft2(dmap) if isinstance(dmap, np.ndarray) \
+            else np.fft.fft2(dmap.data)
+    
+    # Loop over beams, doing beam convolution
+    maps = []
+    for bm in beams:
+        if isinstance(dmap, numpy.ndarray):
+            # Numpy array
+            maps.append( np.real(numpy.fft.ifft2(bm * Fdmap)) )
+        else:
+            # LiteMap (need to create new instance)
+            newmap = dmap.copy()
+            newmap.data[:] = np.real(numpy.fft.ifft2(bm * Fdmap))
+            maps.append(newmap)
+    
+    # Return beam-convolved map or maps
+    if single return maps[0] else return maps
 
 
-#def make2dPowerSpectrum(dmap, l, cl):
-def power_spectrum_2d(dmap, l, cl):
+
+def power_spectrum_2d(template, l, cl):
     """
-    Map an input spherical harmonic power spectrum, C_ell, onto a 2D Fourier 
-    grid.
+    Map an input spherical harmonic power spectrum, C_l, onto a 2D Fourier grid.
+    
+    Parameters
+    ----------
+    template : Flipper LiteMap
+        Template map, used to define pixel grid that the power spectrum will be 
+        projected to.
+    
+    l, cl : array_like
+        Arrays specifying the angular power spectrum to map onto 2D Fourier 
+        grid. 'cl' will be splined before evaluation.
+    
+    Returns
+    -------
+    power2d : Flipper LiteMap (FFT)
+        2D Fourier-space represenation of the input angular power spectrum.
     """
-    ly = numpy.fft.fftfreq(dmap.Ny,d = dmap.pixScaleY)*(2*numpy.pi)
-    lx = numpy.fft.fftfreq(dmap.Nx,d = dmap.pixScaleX)*(2*numpy.pi)
-    modLMap = numpy.zeros([dmap.Ny,dmap.Nx])
-    iy, ix = numpy.mgrid[0:dmap.Ny,0:dmap.Nx]
-    modLMap[iy,ix] = numpy.sqrt(ly[iy]**2+lx[ix]**2)
+    # Calculate Fourier (l_x, l_y) modes for map
+    ly = np.fft.fftfreq(template.Ny, d=template.pixScaleY)*(2.*np.pi)
+    lx = np.fft.fftfreq(template.Nx, d=template.pixScaleX)*(2.*np.pi)
+    
+    # Construct map of |l| values
+    modLMap = np.zeros([template.Ny, template.Nx])
+    iy, ix = np.mgrid[0:template.Ny, 0:template.Nx]
+    modLMap[iy,ix] = np.sqrt(ly[iy]**2. + lx[ix]**2.)
     
     # Spline input power spectrum and evaluate on 2D grid
     s = splrep(l, cl, k=3)
@@ -485,12 +564,17 @@ def power_spectrum_2d(dmap, l, cl):
     power2d = splev(ll, s)
     
     # Peg requested ell modes beyond lmax to C_lmax
-    power2d[numpy.where(ll > l.max())] = cl[-1]
+    power2d[numpy.where(ll > np.max(l))] = cl[-1]
     
-    # Rescale power spectrum my pixel scale and return 2D power spectrum grid
-    #area = (dmap.Nx * dmap.Ny) * (dmap.pixScaleX * dmap.pixScaleY)
-    return numpy.reshape(power2d, (dmap.Ny, dmap.Nx)) \
-                        /(dmap.pixScaleX * dmap.pixScaleY)
+    # Rescale power spectrum by pixel scale
+    power2d = np.reshape(power2d, (template.Ny, template.Nx)) \
+                                     /(template.pixScaleX * template.pixScaleY)
+    
+    # Handle map monopole (kx=0, ky=0) mode
+    power2d[0,0] = 1e-10
+    
+    # Return 2D power spectrum grid
+    return power2d
 
 
 def mask_edges(template, edge_width, apod_fwhm=None, nsigma=5.):
