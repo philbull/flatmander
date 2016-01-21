@@ -34,9 +34,7 @@ class Source(object):
         Cached cosmology functions. Optional, can be None if the Source class 
         does not need to use cosmological info in its calculations.
     """
-    self.cosmo = cosmo    
-    self._profile = None
-    self._dtheta = None
+    self.cosmo = cosmo
     
     # Set position
     self.update_position(pos)
