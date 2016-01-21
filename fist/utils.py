@@ -87,7 +87,7 @@ def experiment_settings(p):
     
     # Generate 2D power spectrum from Cl's (setting monopole to zero)
     power_2d = power_spectrum_2d(template, l, cl_TT)
-    power_2d[0,0] = 1e-10
+    #power_2d.data[0,0] = 1e-10
     
     # Get (inv.) noise, beam, and mask per band
     beams = []; ninvs = []; freqs = []
